@@ -8,6 +8,9 @@
 #include <sstream>
 #include <iomanip>
 #include <unistd.h>
+#include <thread>
+#include <netinet/in.h>
+#include <cstring>
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
 
@@ -16,6 +19,7 @@ using json = nlohmann::json;
 
 /* ================= TELEGRAM ================= */
 
+// ⚠️ Later ENV me le ja sakte ho
 const string BOT_TOKEN = "8031357753:AAF75pKyoKQNPi_q6bw2PsV8aeoPqjAV4y8";
 const string CHANNEL   = "@testing505050";
 
@@ -66,24 +70,18 @@ struct SpreadRow
     double max_loss;
 };
 
-string format_spread(
-    const SpreadRow& s,
-    double spot,
-    const string& expiry
-)
+string format_spread(const SpreadRow& s, double spot, const string& expiry)
 {
     double breakeven;
     string expectation;
 
     if (s.type == "PE")
     {
-        // ✅ PUT CREDIT SPREAD
         breakeven = s.sell_strike - s.max_gain;
         expectation = "📈 Expectations : Nifty will go UP";
     }
     else
     {
-        // ✅ CALL CREDIT SPREAD
         breakeven = s.sell_strike + s.max_gain;
         expectation = "📉 Expectations : Nifty will go DOWN";
     }
@@ -92,14 +90,14 @@ string format_spread(
     msg += "📅 Expire - " + expiry + "\n";
     msg += expectation + "\n";
     msg += (s.type == "PE" ? "🔴 PE " : "🟢 CE ");
-    msg += "Pair  : " +
-           to_string(s.buy_strike) + " (" + fmt2(s.buy_prem) + ") Buy  +  " +
+    msg += "Pair : " +
+           to_string(s.buy_strike) + " (" + fmt2(s.buy_prem) + ") Buy + " +
            to_string(s.sell_strike) + " (" + fmt2(s.sell_prem) + ") Sell\n";
     msg += "💰 Max Gain : " + fmt2(s.max_gain) + "\n";
     msg += "🛑 Max Loss : " + fmt2(s.max_loss) + "\n";
     msg += "🎯 Breakeven : " + fmt2(breakeven) + "\n";
     msg += "📉 Distance : " + fmt2(s.distance) + "\n";
-    msg += "📍 Spot     : " + fmt2(spot) + "\n";
+    msg += "📍 Spot : " + fmt2(spot) + "\n";
     msg += "=================================\n";
     return msg;
 }
@@ -303,13 +301,49 @@ public:
     }
 };
 
+/* ================= DUMMY WEB SERVER (Render Free) ================= */
+
+void dummy_server()
+{
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(10000);
+
+    bind(server_fd, (sockaddr*)&addr, sizeof(addr));
+    listen(server_fd, 1);
+
+    while (true)
+    {
+        int client = accept(server_fd, nullptr, nullptr);
+        if (client >= 0)
+        {
+            const char* resp =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/plain\r\n\r\n"
+                "OK\n";
+            write(client, resp, strlen(resp));
+            close(client);
+        }
+    }
+}
+
 /* ================= MAIN ================= */
 
 int main()
 {
     curl_global_init(CURL_GLOBAL_ALL);
-    SpreadScanner engine(load_config());
-    engine.run();
+
+    thread scanner([] {
+        SpreadScanner engine(load_config());
+        engine.run();
+    });
+
+    dummy_server(); // Render free web service ke liye
+
+    scanner.join();
     curl_global_cleanup();
     return 0;
 }

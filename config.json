@@ -1,7 +1,0 @@
-{
-  "instrument_token": "NSE_INDEX|Nifty 50",
-  "expiry": "2026-01-27",
-  "strike_step": 50,
-  "itm_depth": 5,
-  "sleep_seconds": 1
-}
